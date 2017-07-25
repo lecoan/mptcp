@@ -263,21 +263,23 @@ int inet_create(struct net *net, struct socket *sock, int protocol, int kern)
 	if (protocol < 0 || protocol >= IPPROTO_MAX)
 		return -EINVAL;
 
-	sock->state = SS_UNCONNECTED;
+	sock->state = SS_UNCONNECTED; //将socket设置为未连接状态
 
 	/* Look for the requested type/protocol pair. */
 lookup_protocol:
 	err = -ESOCKTNOSUPPORT;
-	rcu_read_lock();
+	/* 保证多CPU下同步调用代码 */
+	rcu_read_lock(); //对rcu锁的操作，rcu锁适用读多写少的操作
+	//循环检查inetsw数组找到符合socket类型的队列
 	list_for_each_entry_rcu(answer, &inetsw[sock->type], list) {
 
 		err = 0;
-		/* Check the non-wild match. */
+		/* Check the 协议、内核注册协议 match. */
 		if (protocol == answer->protocol) {
 			if (protocol != IPPROTO_IP)
 				break;
 		} else {
-			/* Check for the two wild cases. */
+			/* Check for 属于虚拟IP协议. */
 			if (IPPROTO_IP == protocol) {
 				protocol = answer->protocol;
 				break;
@@ -292,14 +294,14 @@ lookup_protocol:
 		if (try_loading_module < 2) {
 			rcu_read_unlock();
 			/*
-			 * Be more specific, e.g. net-pf-2-proto-132-type-1
+			 * 是否指定了名称？, e.g. net-pf-2-proto-132-type-1
 			 * (net-pf-PF_INET-proto-IPPROTO_SCTP-type-SOCK_STREAM)
 			 */
 			if (++try_loading_module == 1)
 				request_module("net-pf-%d-proto-%d-type-%d",
 					       PF_INET, protocol, sock->type);
 			/*
-			 * Fall back to generic, e.g. net-pf-2-proto-132
+			 * 否则是通用的名称, e.g. net-pf-2-proto-132
 			 * (net-pf-PF_INET-proto-IPPROTO_SCTP)
 			 */
 			else
@@ -1889,4 +1891,3 @@ static int __init ipv4_proc_init(void)
 #endif /* CONFIG_PROC_FS */
 
 MODULE_ALIAS_NETPROTO(PF_INET);
-

@@ -537,12 +537,12 @@ static struct socket *sock_alloc(void)
 {
 	struct inode *inode;
 	struct socket *sock;
-
-	inode = new_inode_pseudo(sock_mnt->mnt_sb);
+	//在网络系统中创建文件节点同时分配socket结构
+	inode = new_inode_pseudo(sock_mnt->mnt_sb); // struct vfsmount --sock_mnt
 	if (!inode)
 		return NULL;
 
-	sock = SOCKET_I(inode);
+	sock = SOCKET_I(inode); //通过inode取得socket结构指针
 
 	kmemcheck_annotate_bitfield(sock, type);
 	inode->i_ino = get_next_ino();
@@ -1124,14 +1124,14 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	 *	the protocol is 0, the family is instructed to select an appropriate
 	 *	default.
 	 */
-	sock = sock_alloc();
+	sock = sock_alloc(); //开辟内存空间
 	if (!sock) {
 		net_warn_ratelimited("socket: no more sockets\n");
 		return -ENFILE;	/* Not exactly a match, but its the
 				   closest posix thing */
 	}
 
-	sock->type = type;
+	sock->type = type; //记录sock类型
 
 #ifdef CONFIG_MODULES
 	/* Attempt to load a protocol module if the find failed.
@@ -1140,12 +1140,13 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	 * requested real, full-featured networking support upon configuration.
 	 * Otherwise module support will break!
 	 */
+	 //如果找不到对应协议族则创建
 	if (rcu_access_pointer(net_families[family]) == NULL)
 		request_module("net-pf-%d", family);
 #endif
 
 	rcu_read_lock();
-	pf = rcu_dereference(net_families[family]);
+	pf = rcu_dereference(net_families[family]); //取得协议族操作表
 	err = -EAFNOSUPPORT;
 	if (!pf)
 		goto out_release;
@@ -1160,7 +1161,8 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	/* Now protected by module ref count */
 	rcu_read_unlock();
 
-	err = pf->create(net, sock, protocol, kern);
+	//此处create为hook函数，挂入的是inet_create()
+	err = pf->create(net, sock, protocol, kern); //执行协议族的创建
 	if (err < 0)
 		goto out_module_put;
 
@@ -1179,7 +1181,7 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	err = security_socket_post_create(sock, family, type, protocol, kern);
 	if (err)
 		goto out_sock_release;
-	*res = sock;
+	*res = sock; //返回创建的socket(利用指针)
 
 	return 0;
 

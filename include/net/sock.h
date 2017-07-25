@@ -39,7 +39,7 @@
  */
 #ifndef _SOCK_H
 #define _SOCK_H
-
+/* 未找到inet_protow */
 #include <linux/hardirq.h>
 #include <linux/kernel.h>
 #include <linux/list.h>

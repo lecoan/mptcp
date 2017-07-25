@@ -20,7 +20,7 @@
  *		Alan Cox	:	Cleaned up, and sorted types.
  *		Pedro Roque	:	inet6 protocols
  */
- 
+
 #ifndef _PROTOCOL_H
 #define _PROTOCOL_H
 
@@ -79,14 +79,14 @@ struct net_offload {
 struct inet_protosw {
 	struct list_head list;
 
-        /* These two fields form the lookup key.  */
-	unsigned short	 type;	   /* This is the 2nd argument to socket(2). */
-	unsigned short	 protocol; /* This is the L4 protocol number.  */
+        /* These two fields 用于校对.  */
+	unsigned short	 type;	   /* This is the 2nd argument to socket(2). 对应socket类型*/
+	unsigned short	 protocol; /* This is the L4 protocol number. IP协议编码 */
 
-	struct proto	 *prot;
-	const struct proto_ops *ops;
-  
-	unsigned char	 flags;      /* See INET_PROTOSW_* below.  */
+	struct proto	 *prot; //对应的协议结构体指针
+	const struct proto_ops *ops; //对应协议的函数操作表指针
+
+	unsigned char	 flags;      /* See INET_PROTOSW_* below. 标志位 */
 };
 #define INET_PROTOSW_REUSE 0x01	     /* Are ports automatically reusable? */
 #define INET_PROTOSW_PERMANENT 0x02  /* Permanent protocols are unremovable. */
