@@ -318,6 +318,7 @@ struct cg_proto;
   *	@sk_backlog_rcv: callback to process the backlog
   *	@sk_destruct: called at sock freeing time, i.e. when all refcnt == 0
  */
+  // 具体通用部分sock结构体，不同协议会衍生出不同的sock
 struct sock {
 	/*
 	 * Now struct inet_timewait_sock also uses sock_common, so please just
@@ -355,7 +356,7 @@ struct sock {
 #define sk_flags		__sk_common.skc_flags
 #define sk_rxhash		__sk_common.skc_rxhash
 
-	socket_lock_t		sk_lock;
+	socket_lock_t		sk_lock; //用于同步
 	struct sk_buff_head	sk_receive_queue;
 	/*
 	 * The backlog queue is special, it is always used with
@@ -366,11 +367,11 @@ struct sock {
 	 * backlog.
 	 */
 	struct {
-		atomic_t	rmem_alloc;
+		atomic_t	rmem_alloc; //接受队列的字节数
 		int		len;
 		struct sk_buff	*head;
 		struct sk_buff	*tail;
-	} sk_backlog;
+	} sk_backlog; //TODO 理解后备队列的作用
 #define sk_rmem_alloc sk_backlog.rmem_alloc
 	int			sk_forward_alloc;
 
@@ -436,7 +437,7 @@ struct sock {
 	ktime_t			sk_stamp;
 	u16			sk_tsflags;
 	u32			sk_tskey;
-	struct socket		*sk_socket;
+	struct socket		*sk_socket; //与socket结构关联
 	void			*sk_user_data;
 	struct page_frag	sk_frag;
 	struct sk_buff		*sk_send_head;

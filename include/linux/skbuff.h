@@ -474,7 +474,7 @@ static inline bool skb_mstamp_after(const struct skb_mstamp *t1,
 	return diff > 0;
 }
 
-/** 
+/**
  *	struct sk_buff - socket buffer
  *	@next: Next buffer in list
  *	@prev: Previous buffer in list
@@ -542,30 +542,34 @@ static inline bool skb_mstamp_after(const struct skb_mstamp *t1,
  *	@truesize: Buffer size
  *	@users: User count - see {datagram,tcp}.c
  */
-
+//非常重要，每一个协议都是用该结构体封装、运载数据包
 struct sk_buff {
 	union {
+		//队列中的前后数据包指针
 		struct {
 			/* These two members must be first. */
 			struct sk_buff		*next;
 			struct sk_buff		*prev;
 
 			union {
-				ktime_t		tstamp;
+				ktime_t		tstamp; //数据包到达时间
 				struct skb_mstamp skb_mstamp;
 			};
 		};
 		struct rb_node	rbnode; /* used in netem & tcp stack */
 	};
-	struct sock		*sk;
-	struct net_device	*dev;
+	struct sock		*sk; //与sock关联
+	struct net_device	*dev; //接受数据包的网络设备
 
 	/*
 	 * This is the control buffer. It is free to use for every
 	 * layer. Please put your private variables there. If you
 	 * want to keep them across layers you have to do a skb_clone()
 	 * first. This is owned by whoever has the skb queued ATM.
+	 * 下面的cb是控制数据块，它被每个层使用，如果想传输自定义内容，则将他们放在
+	 * 这个数组中，前提是必须通过skb_clone()克隆一个数据包
 	 */
+	 //TODO 树莓派源码和2.6的源码的数组大小都是48，mptcp是否有修改？
 	char			cb[56] __aligned(8);
 
 	unsigned long		_skb_refdst;
@@ -579,19 +583,19 @@ struct sk_buff {
 #if IS_ENABLED(CONFIG_BRIDGE_NETFILTER)
 	struct nf_bridge_info	*nf_bridge;
 #endif
-	unsigned int		len,
-				data_len;
-	__u16			mac_len,
-				hdr_len;
+	unsigned int		len, //全部数据块中长度
+				data_len;	//分段、分散数据块总长度
+	__u16			mac_len, //链路层头部长度
+				hdr_len; //克隆数据包时可写的头部长度
 
 	/* Following fields are _not_ copied in __copy_skb_header()
 	 * Note that queue_mapping is here mostly to fill a hole.
 	 */
 	kmemcheck_bitfield_begin(flags1);
 	__u16			queue_mapping;
-	__u8			cloned:1,
-				nohdr:1,
-				fclone:2,
+	__u8			cloned:1, //是否允许克隆
+				nohdr:1, //表示不能修改头部
+				fclone:2, //数据包克隆状态
 				peeked:1,
 				head_frag:1,
 				xmit_more:1;
@@ -702,12 +706,12 @@ struct sk_buff {
 	/* public: */
 
 	/* These elements must be at the end, see alloc_skb() for details.  */
-	sk_buff_data_t		tail;
-	sk_buff_data_t		end;
-	unsigned char		*head,
-				*data;
-	unsigned int		truesize;
-	atomic_t		users;
+	sk_buff_data_t		tail; //指向数据块结束地址
+	sk_buff_data_t		end; //指向缓冲块结束地址
+	unsigned char		*head, //缓冲块开始地址
+				*data;					//数据～～～
+	unsigned int		truesize; //数据包实际长度、结构长度、数据块长度之和
+	atomic_t		users; //数据包使用计算器
 };
 
 #ifdef __KERNEL__
@@ -742,7 +746,7 @@ static inline bool skb_pfmemalloc(const struct sk_buff *skb)
  */
 static inline struct dst_entry *skb_dst(const struct sk_buff *skb)
 {
-	/* If refdst was not refcounted, check we still are in a 
+	/* If refdst was not refcounted, check we still are in a
 	 * rcu_read_lock section
 	 */
 	WARN_ON((skb->_skb_refdst & SKB_DST_NOREF) &&

@@ -107,6 +107,7 @@ struct socket_wq {
  *  @sk: internal networking protocol agnostic socket representation
  *  @wq: wait queue for several uses
  */
+ //socket的公共通用部分（VFS），具体通用部分（net）放在sock结构中
 struct socket {
 	socket_state		state;
 
@@ -118,8 +119,8 @@ struct socket {
 
 	struct socket_wq __rcu	*wq;
 
-	struct file		*file;
-	struct sock		*sk;
+	struct file		*file;//与socket关联的文件指针
+	struct sock		*sk; //表示与具体协议相关的sock结构指针
 	const struct proto_ops	*ops;
 };
 
