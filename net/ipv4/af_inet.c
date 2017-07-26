@@ -338,6 +338,7 @@ lookup_protocol:
 	if (INET_PROTOSW_REUSE & answer_flags)
 		sk->sk_reuse = SK_CAN_REUSE;
 
+	//获取inet_sock指针
 	inet = inet_sk(sk);
 	inet->is_icsk = (INET_PROTOSW_ICSK & answer_flags) != 0;
 
@@ -356,6 +357,7 @@ lookup_protocol:
 
 	inet->inet_id = 0;
 
+  //对sk进一步初始化并将sock sk关联
 	sock_init_data(sock, sk);
 
 	sk->sk_destruct	   = inet_sock_destruct;
@@ -385,6 +387,8 @@ lookup_protocol:
 	}
 
 	if (sk->sk_prot->init) {
+		//sk_alloc将tcp_prot挂在sk_prot上，所以去tcp_prot查找init()
+		//tcp_v4_init_sock（）
 		err = sk->sk_prot->init(sk);
 		if (err)
 			sk_common_release(sk);

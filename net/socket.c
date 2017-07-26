@@ -395,8 +395,10 @@ static int sock_map_fd(struct socket *sock, int flags)
 	if (unlikely(fd < 0))
 		return fd;
 
+  //为socket分配文件号和文件结构
 	newfile = sock_alloc_file(sock, flags, NULL);
 	if (likely(!IS_ERR(newfile))) {
+		//使文件号和文件挂钩
 		fd_install(fd, newfile);
 		return fd;
 	}

@@ -304,7 +304,7 @@ atomic_long_t tcp_memory_allocated;	/* Current allocated memory. */
 EXPORT_SYMBOL(tcp_memory_allocated);
 
 /*
- * Current number of TCP sockets.
+ * 当前TCP sockets总数.
  */
 struct percpu_counter tcp_sockets_allocated;
 EXPORT_SYMBOL(tcp_sockets_allocated);
@@ -396,9 +396,11 @@ const struct tcp_sock_ops tcp_specific = {
  *
  * NOTE: A lot of things set to zero explicitly by call to
  *       sk_alloc() so need not be done here.
+ * NOTE: 这里有一些关于mptcp初始化的内容
  */
 void tcp_init_sock(struct sock *sk)
 {
+	//从sock中获取对应指针
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
 
@@ -416,14 +418,14 @@ void tcp_init_sock(struct sock *sk)
 	 * algorithms that we must have the following bandaid to talk
 	 * efficiently to them.  -DaveM
 	 */
-	tp->snd_cwnd = TCP_INIT_CWND;
+	tp->snd_cwnd = TCP_INIT_CWND; //
 
 	/* See draft-stevens-tcpca-spec-01 for discussion of the
 	 * initialization of these values.
 	 */
-	tp->snd_ssthresh = TCP_INFINITE_SSTHRESH;
-	tp->snd_cwnd_clamp = ~0;
-	tp->mss_cache = TCP_MSS_DEFAULT;
+	tp->snd_ssthresh = TCP_INFINITE_SSTHRESH; // ？
+	tp->snd_cwnd_ = ~0; // ？
+	tp->mss_cache = TCP_MSS_DEFAULT; // ？
 	u64_stats_init(&tp->syncp);
 
 	tp->reordering = sysctl_tcp_reordering;
@@ -432,6 +434,7 @@ void tcp_init_sock(struct sock *sk)
 
 	tp->tsoffset = 0;
 
+  //sock状态为关闭
 	sk->sk_state = TCP_CLOSE;
 
 	sk->sk_write_space = sk_stream_write_space;
@@ -445,6 +448,7 @@ void tcp_init_sock(struct sock *sk)
 	tp->ops = &tcp_specific;
 
 	/* Initialize MPTCP-specific stuff and function-pointers */
+	//初始化mptcp相关的东西和函数指针
 	mptcp_init_tcp_sock(sk);
 
 	local_bh_disable();
