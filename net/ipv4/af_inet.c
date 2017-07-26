@@ -1017,7 +1017,7 @@ static struct inet_protosw inetsw_array[] =
 {
 	{
 		.type =       SOCK_STREAM,
-		.protocol =   IPPROTO_TCP,
+		.protocol =   IPPROTO_TCP, //协议标示码
 		.prot =       &tcp_prot,
 		.ops =        &inet_stream_ops,
 		.flags =      INET_PROTOSW_PERMANENT |
@@ -1041,7 +1041,7 @@ static struct inet_protosw inetsw_array[] =
        },
 
        {
-	       .type =       SOCK_RAW,
+	       .type =       SOCK_RAW, //原始sock，可以是用户自己的协议
 	       .protocol =   IPPROTO_IP,	/* wild card */
 	       .prot =       &raw_prot,
 	       .ops =        &inet_sockraw_ops,
@@ -1774,6 +1774,7 @@ static int __init inet_init(void)
 	for (r = &inetsw[0]; r < &inetsw[SOCK_MAX]; ++r)
 		INIT_LIST_HEAD(r);
 
+	//将inetsw_array中的元素注册到inetsw数组中
 	for (q = inetsw_array; q < &inetsw_array[INETSW_ARRAY_LEN]; ++q)
 		inet_register_protosw(q);
 
