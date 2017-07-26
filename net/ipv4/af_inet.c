@@ -125,6 +125,7 @@
 
 /* The inetsw table contains everything that inet_create needs to
  * build a new socket.
+ * inetsw表包含所有inet_create生成新的socket所需要的信息
  */
 static struct list_head inetsw[SOCK_MAX];
 static DEFINE_SPINLOCK(inetsw_lock);
@@ -280,6 +281,7 @@ lookup_protocol:
 				break;
 		} else {
 			/* Check for 属于虚拟IP协议. */
+			//IPPROTO_IP的值为0
 			if (IPPROTO_IP == protocol) {
 				protocol = answer->protocol;
 				break;
@@ -317,7 +319,9 @@ lookup_protocol:
 	    !ns_capable(net->user_ns, CAP_NET_RAW))
 		goto out_rcu_unlock;
 
+	//将查找到的对应操作表赋值给要创建的sock
 	sock->ops = answer->ops;
+	//answer_prot将作为参数传给sk_alloc()
 	answer_prot = answer->prot;
 	answer_flags = answer->flags;
 	rcu_read_unlock();
@@ -325,6 +329,7 @@ lookup_protocol:
 	WARN_ON(!answer_prot->slab);
 
 	err = -ENOBUFS;
+	//传递answer_prot
 	sk = sk_alloc(net, PF_INET, GFP_KERNEL, answer_prot, kern);
 	if (!sk)
 		goto out;
@@ -355,6 +360,7 @@ lookup_protocol:
 
 	sk->sk_destruct	   = inet_sock_destruct;
 	sk->sk_protocol	   = protocol;
+	//TODO 设置处理库存函数？
 	sk->sk_backlog_rcv = sk->sk_prot->backlog_rcv;
 
 	inet->uc_ttl	= -1;
@@ -1065,7 +1071,9 @@ void inet_register_protosw(struct inet_protosw *p)
 
 	/* If we are trying to override a permanent protocol, bail. */
 	last_perm = &inetsw[p->type];
+	//lh作为temp， 下一个是链表头
 	list_for_each(lh, &inetsw[p->type]) {
+		//#define contains_of list_entry
 		answer = list_entry(lh, struct inet_protosw, list);
 		/* Check only the non-wild match. */
 		if ((INET_PROTOSW_PERMANENT & answer->flags) == 0)
@@ -1775,6 +1783,7 @@ static int __init inet_init(void)
 		INIT_LIST_HEAD(r);
 
 	//将inetsw_array中的元素注册到inetsw数组中
+	//TODO 疑问：inetsw_array中只有4个元素且type不同，为什么inetsw要用链表实现？
 	for (q = inetsw_array; q < &inetsw_array[INETSW_ARRAY_LEN]; ++q)
 		inet_register_protosw(q);
 
