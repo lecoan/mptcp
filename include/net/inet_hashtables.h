@@ -74,15 +74,15 @@ struct inet_ehash_bucket {
  * users logged onto your box, isn't it nice to know that new data
  * ports are created in O(1) time?  I thought so. ;-)	-DaveM
  */
-struct inet_bind_bucket {
-	possible_net_t		ib_net;
+struct inet_bind_bucket { //桶结构
+	possible_net_t		ib_net; ///网络空间指针
 	unsigned short		port;
-	signed char		fastreuse;
+	signed char		fastreuse; //可重复使用
 	signed char		fastreuseport;
 	kuid_t			fastuid;
 	int			num_owners;
-	struct hlist_node	node;
-	struct hlist_head	owners;
+	struct hlist_node	node; //键入hash桶chain的hash节点
+	struct hlist_head	owners; //sock结构队列
 };
 
 static inline struct net *ib_net(struct inet_bind_bucket *ib)
@@ -93,9 +93,9 @@ static inline struct net *ib_net(struct inet_bind_bucket *ib)
 #define inet_bind_bucket_for_each(tb, head) \
 	hlist_for_each_entry(tb, head, node)
 
-struct inet_bind_hashbucket {
-	spinlock_t		lock;
-	struct hlist_head	chain;
+struct inet_bind_hashbucket { //hash桶结构
+	spinlock_t		lock;	//自旋锁
+	struct hlist_head	chain; //桶队列
 };
 
 /*
@@ -113,6 +113,7 @@ struct inet_listen_hashbucket {
 /* This is for listening sockets, thus all sockets which possess wildcards. */
 #define INET_LHTABLE_SIZE	32	/* Yes, really, this is all you need. */
 
+//用来封装各种协议的绑定协议表
 struct inet_hashinfo {
 	/* This is for sockets with full identity only.  Sockets here will
 	 * always be without wildcards and will have the following invariant:
@@ -120,17 +121,20 @@ struct inet_hashinfo {
 	 *          TCP_ESTABLISHED <= sk->sk_state < TCP_CLOSE
 	 *
 	 */
-	struct inet_ehash_bucket	*ehash;
-	spinlock_t			*ehash_locks;
-	unsigned int			ehash_mask;
-	unsigned int			ehash_locks_mask;
+	 //已经连接的sock结构都键入该hash桶中，有两个队列
+	 //一个是连接的sock队列
+	 //一个是为定时等待的sock队列
+	struct inet_ehash_bucket	*ehash;	//已经建立连接的hash桶
+	spinlock_t			*ehash_locks;	//队列锁
+	unsigned int			ehash_mask;	//队列长度
+	unsigned int			ehash_locks_mask;	//锁掩码
 
 	/* Ok, let's try this, I give up, we do need a local binding
 	 * TCP hash as well as the others for fast bind/connect.
 	 */
-	struct inet_bind_hashbucket	*bhash;
+	struct inet_bind_hashbucket	*bhash; //管理端口号的hash桶
 
-	unsigned int			bhash_size;
+	unsigned int			bhash_size; //hash桶长度
 	/* 4 bytes hole on 64 bit */
 
 	struct kmem_cache		*bind_bucket_cachep;
@@ -145,6 +149,7 @@ struct inet_hashinfo {
 	 * table where wildcard'd TCP sockets can exist.  Hash function here
 	 * is just local port number.
 	 */
+	 //监听hash队列
 	struct inet_listen_hashbucket	listening_hash[INET_LHTABLE_SIZE]
 					____cacheline_aligned_in_smp;
 };

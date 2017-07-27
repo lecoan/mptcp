@@ -505,6 +505,7 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 
 	/* Check these errors (active socket, double bind). */
 	err = -EINVAL;
+	//检测sock是否关闭或者以绑定端口
 	if (sk->sk_state != TCP_CLOSE || inet->inet_num)
 		goto out_release_sock;
 

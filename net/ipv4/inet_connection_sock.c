@@ -93,6 +93,7 @@ EXPORT_SYMBOL_GPL(inet_csk_bind_conflict);
  */
 int inet_csk_get_port(struct sock *sk, unsigned short snum)
 {
+	//hashinfo挂载了tcp_hashinfo
 	struct inet_hashinfo *hashinfo = sk->sk_prot->h.hashinfo;
 	struct inet_bind_hashbucket *head;
 	struct inet_bind_bucket *tb;
@@ -103,7 +104,7 @@ int inet_csk_get_port(struct sock *sk, unsigned short snum)
 	int attempt_half = (sk->sk_reuse == SK_CAN_REUSE) ? 1 : 0;
 
 	local_bh_disable();
-	if (!snum) {
+	if (!snum) { //如果端口号没有指定
 		int remaining, rover, low, high;
 
 again:
@@ -120,7 +121,7 @@ again:
 		smallest_rover = rover = prandom_u32() % remaining + low;
 
 		smallest_size = -1;
-		do {
+		do { //在内核中查找一个端口
 			if (inet_is_local_reserved_port(net, rover))
 				goto next_nolock;
 			head = &hashinfo->bhash[inet_bhashfn(net, rover,
