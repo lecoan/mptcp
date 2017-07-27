@@ -929,6 +929,7 @@ static int inet_compat_ioctl(struct socket *sock, unsigned int cmd, unsigned lon
 }
 #endif
 
+//在创建tcp连接时挂在到socket的ops下
 const struct proto_ops inet_stream_ops = {
 	.family		   = PF_INET,
 	.owner		   = THIS_MODULE,
@@ -1804,6 +1805,7 @@ static int __init inet_init(void)
 	ip_init();
 
 	/* We must initialize MPTCP before TCP. */
+	//NOTE 这里需要深入
 	mptcp_init();
 
 	tcp_v4_init();

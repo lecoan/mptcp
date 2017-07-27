@@ -383,6 +383,7 @@ struct file *sock_alloc_file(struct socket *sock, int flags, const char *dname)
 
 	sock->file = file;
 	file->f_flags = O_RDWR | (flags & O_NONBLOCK);
+	//NOTE 将file结构的data指向socket
 	file->private_data = sock;
 	return file;
 }
@@ -410,6 +411,7 @@ static int sock_map_fd(struct socket *sock, int flags)
 struct socket *sock_from_file(struct file *file, int *err)
 {
 	if (file->f_op == &socket_file_ops)
+	//这里的private_data对应socket指针，指向服务器
 		return file->private_data;	/* set in sock_map_fd */
 
 	*err = -ENOTSOCK;
@@ -450,12 +452,12 @@ EXPORT_SYMBOL(sockfd_lookup);
 
 static struct socket *sockfd_lookup_light(int fd, int *err, int *fput_needed)
 {
-	struct fd f = fdget(fd);
+	struct fd f = fdget(fd); //通过文件号找到文件块
 	struct socket *sock;
 
 	*err = -EBADF;
 	if (f.file) {
-		sock = sock_from_file(f.file, err);
+		sock = sock_from_file(f.file, err); //获取已创建的socket
 		if (likely(sock)) {
 			*fput_needed = f.flags;
 			return sock;
