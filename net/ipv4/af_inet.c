@@ -446,6 +446,7 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	int err;
 
 	/* If the socket has its own bind function then use it. (RAW) */
+	//对原始socket，如果有自己的函数，则使用自己的bind
 	if (sk->sk_prot->bind) {
 		err = sk->sk_prot->bind(sk, uaddr, addr_len);
 		goto out;
@@ -454,6 +455,7 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	if (addr_len < sizeof(struct sockaddr_in))
 		goto out;
 
+  //兼容性检测
 	if (addr->sin_family != AF_INET) {
 		/* Compatibility games : accept AF_UNSPEC (mapped to AF_INET)
 		 * only if s_addr is INADDR_ANY.
@@ -465,6 +467,7 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	}
 
 	tb_id = l3mdev_fib_table_by_index(net, sk->sk_bound_dev_if) ? : tb_id;
+	//在路由中检查地址类型
 	chk_addr_ret = inet_addr_type_table(net, addr->sin_addr.s_addr, tb_id);
 
 	/* Not specified by any standard per-se, however it breaks too
@@ -478,11 +481,12 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	if (!net->ipv4.sysctl_ip_nonlocal_bind &&
 	    !(inet->freebind || inet->transparent) &&
 	    addr->sin_addr.s_addr != htonl(INADDR_ANY) &&
-	    chk_addr_ret != RTN_LOCAL &&
-	    chk_addr_ret != RTN_MULTICAST &&
-	    chk_addr_ret != RTN_BROADCAST)
+	    chk_addr_ret != RTN_LOCAL && //是否单播
+	    chk_addr_ret != RTN_MULTICAST && //~~组播
+	    chk_addr_ret != RTN_BROADCAST) //广播
 		goto out;
 
+  //取得端口
 	snum = ntohs(addr->sin_port);
 	err = -EACCES;
 	if (snum && snum < PROT_SOCK &&
@@ -495,6 +499,7 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	 *      In the BSD API these are the same except where it
 	 *      would be illegal to use them (multicast/broadcast) in
 	 *      which case the sending device address is used.
+	 *			使用两个地址， rcv_saddr用于hash查找， saddr用于发送
 	 */
 	lock_sock(sk);
 
@@ -510,22 +515,28 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	/* Make sure we are allowed to bind here. */
 	if ((snum || !inet->bind_address_no_port) &&
 	    sk->sk_prot->get_port(sk, snum)) {
+				//检验失败则清空设置的地址
 		inet->inet_saddr = inet->inet_rcv_saddr = 0;
 		err = -EADDRINUSE;
 		goto out_release_sock;
 	}
 
+  //上锁
 	if (inet->inet_rcv_saddr)
+		//表明以绑定地址
 		sk->sk_userlocks |= SOCK_BINDADDR_LOCK;
 	if (snum)
+		//～～～端口
 		sk->sk_userlocks |= SOCK_BINDPORT_LOCK;
-	inet->inet_sport = htons(inet->inet_num);
+	inet->inet_sport = htons(inet->inet_num); //记录端口
+	//初始化目的地址和端口
 	inet->inet_daddr = 0;
 	inet->inet_dport = 0;
+	//初始化缓存的路由内容
 	sk_dst_reset(sk);
 	err = 0;
 out_release_sock:
-	release_sock(sk);
+	release_sock(sk);//解锁并唤醒与sock有关的其他线程
 out:
 	return err;
 }

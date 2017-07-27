@@ -220,13 +220,16 @@ static inline unsigned int __inet_dev_addr_type(struct net *net,
 	unsigned int ret = RTN_BROADCAST;
 	struct fib_table *table;
 
+  //地址是否为零地址或关广播地址
 	if (ipv4_is_zeronet(addr) || ipv4_is_lbcast(addr))
 		return RTN_BROADCAST;
+	//是否是组播地址
 	if (ipv4_is_multicast(addr))
 		return RTN_MULTICAST;
 
 	rcu_read_lock();
 
+	//查找本地路由表 tb_id = RT_TABLE_LOCAL
 	table = fib_get_table(net, tb_id);
 	if (table) {
 		ret = RTN_UNICAST;
