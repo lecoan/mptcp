@@ -1,9 +1,15 @@
 /* MPTCP Scheduler module selector. Highly inspired by tcp_cong.c */
-
+/*
+该文件实现下列功能
+	选择哪条通道发送
+	发送哪些数据
+	数据分段
+	生成、初始化s、设置cheduler
+*/
 #include <linux/module.h>
 #include <net/mptcp.h>
 
-static DEFINE_SPINLOCK(mptcp_sched_list_lock);
+static DEFINE_SPINLOCK(mptcp_sched_list_lock);	//同时访问共享数据时的锁机制（死等）
 static LIST_HEAD(mptcp_sched_list);
 
 struct defsched_priv {
@@ -12,7 +18,7 @@ struct defsched_priv {
 
 static struct defsched_priv *defsched_get_priv(const struct tcp_sock *tp)
 {
-	return (struct defsched_priv *)&tp->mptcp->mptcp_sched[0];
+	return (struct defsched_priv *)&(tp->mptcp->mptcp_sched[0]);
 }
 
 bool mptcp_is_def_unavailable(struct sock *sk)
@@ -24,9 +30,10 @@ bool mptcp_is_def_unavailable(struct sock *sk)
 		return true;
 
 	/* We do not send data on this subflow unless it is
-	 * fully established, i.e. the 4th ack has been received.
-	 */
-	if (tp->mptcp->pre_established)
+	* fully established, i.e. the 4th ack has been received.
+	*/
+	// State between sending 3rd ACK and receiving the fourth ack of new subflows.						 
+	if (tp->mptcp->pre_established)	
 		return true;
 
 	if (tp->pf)
@@ -37,37 +44,37 @@ bool mptcp_is_def_unavailable(struct sock *sk)
 EXPORT_SYMBOL_GPL(mptcp_is_def_unavailable);
 
 static bool mptcp_is_temp_unavailable(struct sock *sk,
-				      const struct sk_buff *skb,
-				      bool zero_wnd_test)
+	const struct sk_buff *skb,
+	bool zero_wnd_test)
 {
 	const struct tcp_sock *tp = tcp_sk(sk);
 	unsigned int mss_now, space, in_flight;
 
 	if (inet_csk(sk)->icsk_ca_state == TCP_CA_Loss) {
 		/* If SACK is disabled, and we got a loss, TCP does not exit
-		 * the loss-state until something above high_seq has been
-		 * acked. (see tcp_try_undo_recovery)
-		 *
-		 * high_seq is the snd_nxt at the moment of the RTO. As soon
-		 * as we have an RTO, we won't push data on the subflow.
-		 * Thus, snd_una can never go beyond high_seq.
-		 */
+		* the loss-state until something above high_seq has been
+		* acked. (see tcp_try_undo_recovery)
+		*
+		* high_seq is the snd_nxt at the moment of the RTO. As soon
+		* as we have an RTO, we won't push data on the subflow.
+		* Thus, snd_una can never go beyond high_seq.
+		*/
 		if (!tcp_is_reno(tp))
 			return true;
-		else if (tp->snd_una != tp->high_seq)
+		else if (tp->snd_una != tp->high_seq)	//snd_una: First byte we want an ack for 
 			return true;
 	}
 
 	if (!tp->mptcp->fully_established) {
 		/* Make sure that we send in-order data */
 		if (skb && tp->mptcp->second_packet &&
-		    tp->mptcp->last_end_data_seq != TCP_SKB_CB(skb)->seq)
+			tp->mptcp->last_end_data_seq != TCP_SKB_CB(skb)->seq)
 			return true;
 	}
 
 	/* If TSQ is already throttling us, do not send on this subflow. When
-	 * TSQ gets cleared the subflow becomes eligible again.
-	 */
+	* TSQ gets cleared the subflow becomes eligible again.
+	*/
 	if (test_bit(TSQ_THROTTLED, &tp->tsq_flags))
 		return true;
 
@@ -77,8 +84,8 @@ static bool mptcp_is_temp_unavailable(struct sock *sk,
 		return true;
 
 	/* Now, check if what is queued in the subflow's send-queue
-	 * already fills the cwnd.
-	 */
+	* already fills the cwnd.
+	*/
 	space = (tp->snd_cwnd - in_flight) * tp->mss_cache;
 
 	if (tp->write_seq - tp->snd_nxt > space)
@@ -90,40 +97,45 @@ static bool mptcp_is_temp_unavailable(struct sock *sk,
 	mss_now = tcp_current_mss(sk);
 
 	/* Don't send on this subflow if we bypass the allowed send-window at
-	 * the per-subflow level. Similar to tcp_snd_wnd_test, but manually
-	 * calculated end_seq (because here at this point end_seq is still at
-	 * the meta-level).
-	 */
+	* the per-subflow level. Similar to tcp_snd_wnd_test, but manually
+	* calculated end_seq (because here at this point end_seq is still at
+	* the meta-level).
+	*/
 	if (skb && !zero_wnd_test &&
-	    after(tp->write_seq + min(skb->len, mss_now), tcp_wnd_end(tp)))
+		after(tp->write_seq + min(skb->len, mss_now), tcp_wnd_end(tp)))
 		return true;
 
 	return false;
 }
 
 /* Is the sub-socket sk available to send the skb? */
+//调用mptcp_is_def_unavailable和mptcp_is_temp_unavailable，判断该sock是否可用
 bool mptcp_is_available(struct sock *sk, const struct sk_buff *skb,
-			bool zero_wnd_test)
+	bool zero_wnd_test)
 {
 	return !mptcp_is_def_unavailable(sk) &&
-	       !mptcp_is_temp_unavailable(sk, skb, zero_wnd_test);
+		!mptcp_is_temp_unavailable(sk, skb, zero_wnd_test);
 }
 EXPORT_SYMBOL_GPL(mptcp_is_available);
 
 /* Are we not allowed to reinject this skb on tp? */
+//如果该skb已经在sk中，不应该再将该skb加入sk
 static int mptcp_dont_reinject_skb(const struct tcp_sock *tp, const struct sk_buff *skb)
 {
 	/* If the skb has already been enqueued in this sk, try to find
-	 * another one.
-	 */
+	* another one.
+	*/
 	return skb &&
 		/* Has the skb already been enqueued into this subsocket? */
 		mptcp_pi_to_flag(tp->mptcp->path_index) & TCP_SKB_CB(skb)->path_mask;
 }
 
+//该子流是否有备份
 bool subflow_is_backup(const struct tcp_sock *tp)
 {
 	return tp->mptcp->rcv_low_prio || tp->mptcp->low_prio;
+	// low_prio：use this socket as backup 
+	// rcv_low_prio：Peer sent low-prio option to us
 }
 EXPORT_SYMBOL_GPL(subflow_is_backup);
 
@@ -134,12 +146,13 @@ bool subflow_is_active(const struct tcp_sock *tp)
 EXPORT_SYMBOL_GPL(subflow_is_active);
 
 /* Generic function to iterate over used and unused subflows and to select the
- * best one
- */
+* best one
+*/
+//从符合条件的子流中找出最好的一条子流5
 static struct sock
 *get_subflow_from_selectors(struct mptcp_cb *mpcb, struct sk_buff *skb,
-			    bool (*selector)(const struct tcp_sock *),
-			    bool zero_wnd_test, bool *force)
+	bool(*selector)(const struct tcp_sock *),
+	bool zero_wnd_test, bool *force)
 {
 	struct sock *bestsk = NULL;
 	u32 min_srtt = 0xffffffff;
@@ -159,8 +172,8 @@ static struct sock
 			unused = true;
 		else if (found_unused)
 			/* If a unused sk was found previously, we continue -
-			 * no need to check used sks anymore.
-			 */
+			* no need to check used sks anymore.
+			*/
 			continue;
 
 		if (mptcp_is_def_unavailable(sk))
@@ -175,9 +188,9 @@ static struct sock
 		if (unused) {
 			if (!found_unused) {
 				/* It's the first time we encounter an unused
-				 * sk - thus we reset the bestsk (which might
-				 * have been set to a used sk).
-				 */
+				* sk - thus we reset the bestsk (which might
+				* have been set to a used sk).
+				*/
 				min_srtt = 0xffffffff;
 				bestsk = NULL;
 			}
@@ -192,16 +205,17 @@ static struct sock
 
 	if (bestsk) {
 		/* The force variable is used to mark the returned sk as
-		 * previously used or not-used.
-		 */
+		* previously used or not-used.
+		*/
 		if (found_unused)
 			*force = true;
 		else
 			*force = false;
-	} else {
+	}
+	else {
 		/* The force variable is used to mark if there are temporally
-		 * unavailable not-used sks.
-		 */
+		* unavailable not-used sks.
+		*/
 		if (found_unused_una)
 			*force = true;
 		else
@@ -212,19 +226,20 @@ static struct sock
 }
 
 /* This is the scheduler. This function decides on which flow to send
- * a given MSS. If all subflows are found to be busy, NULL is returned
- * The flow is selected based on the shortest RTT.
- * If all paths have full cong windows, we simply return NULL.
- *
- * Additionally, this function is aware of the backup-subflows.
- */
+* a given MSS. If all subflows are found to be busy, NULL is returned
+* The flow is selected based on the shortest RTT.
+* If all paths have full cong windows, we simply return NULL.
+*
+* Additionally, this function is aware of the backup-subflows.
+*/
+//挑选可用的sock
 struct sock *get_available_subflow(struct sock *meta_sk, struct sk_buff *skb,
-				   bool zero_wnd_test)
-{
+	bool zero_wnd_test)
+{	//MPTCP内核实现的三个组成部分之一：Multi-path control bock(mpcb) 
 	struct mptcp_cb *mpcb = tcp_sk(meta_sk)->mpcb;
 	struct sock *sk;
 	bool force;
-
+	
 	/* if there is only one subflow, bypass the scheduling function */
 	if (mpcb->cnt_subflows == 1) {
 		sk = (struct sock *)mpcb->connection_list;
@@ -235,32 +250,32 @@ struct sock *get_available_subflow(struct sock *meta_sk, struct sk_buff *skb,
 
 	/* Answer data_fin on same subflow!!! */
 	if (meta_sk->sk_shutdown & RCV_SHUTDOWN &&
-	    skb && mptcp_is_data_fin(skb)) {
+		skb && mptcp_is_data_fin(skb)) {
 		mptcp_for_each_sk(mpcb, sk) {
 			if (tcp_sk(sk)->mptcp->path_index == mpcb->dfin_path_index &&
-			    mptcp_is_available(sk, skb, zero_wnd_test))
+				mptcp_is_available(sk, skb, zero_wnd_test))
 				return sk;
 		}
 	}
 
 	/* Find the best subflow */
 	sk = get_subflow_from_selectors(mpcb, skb, &subflow_is_active,
-					zero_wnd_test, &force);
+		zero_wnd_test, &force);
 	if (force)
 		/* one unused active sk or one NULL sk when there is at least
-		 * one temporally unavailable unused active sk
-		 */
+		* one temporally unavailable unused active sk
+		*/
 		return sk;
 
 	sk = get_subflow_from_selectors(mpcb, skb, &subflow_is_backup,
-					zero_wnd_test, &force);
+		zero_wnd_test, &force);
 	if (!force && skb)
 		/* one used backup sk or one NULL sk where there is no one
-		 * temporally unavailable unused backup sk
-		 *
-		 * the skb passed through all the available active and backups
-		 * sks, so clean the path mask
-		 */
+		* temporally unavailable unused backup sk
+		*
+		* the skb passed through all the available active and backups
+		* sks, so clean the path mask
+		*/
 		TCP_SKB_CB(skb)->path_mask = 0;
 	return sk;
 }
@@ -284,10 +299,10 @@ static struct sk_buff *mptcp_rcv_buf_optimization(struct sock *sk, int penal)
 		return NULL;
 
 	/* If penalization is optional (coming from mptcp_next_segment() and
-	 * We are not send-buffer-limited we do not penalize. The retransmission
-	 * is just an optimization to fix the idle-time due to the delay before
-	 * we wake up the application.
-	 */
+	* We are not send-buffer-limited we do not penalize. The retransmission
+	* is just an optimization to fix the idle-time due to the delay before
+	* we wake up the application.
+	*/
 	if (!penal && sk_stream_memory_free(meta_sk))
 		goto retrans;
 
@@ -298,7 +313,7 @@ static struct sk_buff *mptcp_rcv_buf_optimization(struct sock *sk, int penal)
 	/* Half the cwnd of the slow flow */
 	mptcp_for_each_tp(tp->mpcb, tp_it) {
 		if (tp_it != tp &&
-		    TCP_SKB_CB(skb_head)->path_mask & mptcp_pi_to_flag(tp_it->mptcp->path_index)) {
+			TCP_SKB_CB(skb_head)->path_mask & mptcp_pi_to_flag(tp_it->mptcp->path_index)) {
 			if (tp->srtt_us < tp_it->srtt_us && inet_csk((struct sock *)tp_it)->icsk_ca_state == TCP_CA_Open) {
 				u32 prior_cwnd = tp_it->snd_cwnd;
 
@@ -306,7 +321,7 @@ static struct sk_buff *mptcp_rcv_buf_optimization(struct sock *sk, int penal)
 
 				/* If in slow start, do not reduce the ssthresh */
 				if (prior_cwnd >= tp_it->snd_ssthresh)
-					tp_it->snd_ssthresh = max(tp_it->snd_ssthresh >> 1U, 2U);
+					tp_it->snd_ssthresh = max(tp_it->snd_ssthresh >> 1U, 2U45);
 
 				dsp->last_rbuf_opti = tcp_time_stamp;
 			}
@@ -321,7 +336,7 @@ retrans:
 		bool do_retrans = false;
 		mptcp_for_each_tp(tp->mpcb, tp_it) {
 			if (tp_it != tp &&
-			    TCP_SKB_CB(skb_head)->path_mask & mptcp_pi_to_flag(tp_it->mptcp->path_index)) {
+				TCP_SKB_CB(skb_head)->path_mask & mptcp_pi_to_flag(tp_it->mptcp->path_index)) {
 				if (tp_it->snd_cwnd <= 4) {
 					do_retrans = true;
 					break;
@@ -330,7 +345,8 @@ retrans:
 				if (4 * tp->srtt_us >= tp_it->srtt_us) {
 					do_retrans = false;
 					break;
-				} else {
+				}
+				else {
 					do_retrans = true;
 				}
 			}
@@ -343,13 +359,14 @@ retrans:
 }
 
 /* Returns the next segment to be sent from the mptcp meta-queue.
- * (chooses the reinject queue if any segment is waiting in it, otherwise,
- * chooses the normal write queue).
- * Sets *@reinject to 1 if the returned segment comes from the
- * reinject queue. Sets it to 0 if it is the regular send-head of the meta-sk,
- * and sets it to -1 if it is a meta-level retransmission to optimize the
- * receive-buffer.
- */
+* (chooses the reinject queue if any segment is waiting in it, otherwise,
+* chooses the normal write queue).
+* Sets *@reinject to 1 if the returned segment comes from the
+* reinject queue. Sets it to 0 if it is the regular send-head of the meta-sk,
+* and sets it to -1 if it is a meta-level retransmission to optimize the
+* receive-buffer.
+*/
+//返回下一个要传输的数据段，优先选择reinject队列内的数据段
 static struct sk_buff *__mptcp_next_segment(struct sock *meta_sk, int *reinject)
 {
 	const struct mptcp_cb *mpcb = tcp_sk(meta_sk)->mpcb;
@@ -365,14 +382,15 @@ static struct sk_buff *__mptcp_next_segment(struct sock *meta_sk, int *reinject)
 
 	if (skb) {
 		*reinject = 1;
-	} else {
+	}
+	else {
 		skb = tcp_send_head(meta_sk);
 
 		if (!skb && meta_sk->sk_socket &&
-		    test_bit(SOCK_NOSPACE, &meta_sk->sk_socket->flags) &&
-		    sk_stream_wspace(meta_sk) < sk_stream_min_wspace(meta_sk)) {
+			test_bit(SOCK_NOSPACE, &meta_sk->sk_socket->flags) &&
+			sk_stream_wspace(meta_sk) < sk_stream_min_wspace(meta_sk)) {
 			struct sock *subsk = get_available_subflow(meta_sk, NULL,
-								   false);
+				false);
 			if (!subsk)
 				return NULL;
 
@@ -384,10 +402,9 @@ static struct sk_buff *__mptcp_next_segment(struct sock *meta_sk, int *reinject)
 	return skb;
 }
 
+//分段处理
 static struct sk_buff *mptcp_next_segment(struct sock *meta_sk,
-					  int *reinject,
-					  struct sock **subsk,
-					  unsigned int *limit)
+	int *reinject, struct sock **subsk,	unsigned int *limit)
 {
 	struct sk_buff *skb = __mptcp_next_segment(meta_sk, reinject);
 	unsigned int mss_now;
@@ -421,12 +438,12 @@ static struct sk_buff *mptcp_next_segment(struct sock *meta_sk,
 		return skb;
 
 	/* The following is similar to tcp_mss_split_point, but
-	 * we do not care about nagle, because we will anyways
-	 * use TCP_NAGLE_PUSH, which overrides this.
-	 *
-	 * So, we first limit according to the cwnd/gso-size and then according
-	 * to the subflow's window.
-	 */
+	* we do not care about nagle, because we will anyways
+	* use TCP_NAGLE_PUSH, which overrides this.
+	*
+	* So, we first limit according to the cwnd/gso-size and then according
+	* to the subflow's window.
+	*/
 
 	gso_max_segs = (*subsk)->sk_gso_max_segs;
 	if (!gso_max_segs) /* No gso supported on the subflow's NIC */
@@ -476,6 +493,7 @@ static struct mptcp_sched_ops *mptcp_sched_find(const char *name)
 	return NULL;
 }
 
+//新建调度表
 int mptcp_register_scheduler(struct mptcp_sched_ops *sched)
 {
 	int ret = 0;
@@ -487,7 +505,8 @@ int mptcp_register_scheduler(struct mptcp_sched_ops *sched)
 	if (mptcp_sched_find(sched->name)) {
 		pr_notice("%s already registered\n", sched->name);
 		ret = -EEXIST;
-	} else {
+	}
+	else {
 		list_add_tail_rcu(&sched->list, &mptcp_sched_list);
 		pr_info("%s registered\n", sched->name);
 	}
@@ -497,6 +516,7 @@ int mptcp_register_scheduler(struct mptcp_sched_ops *sched)
 }
 EXPORT_SYMBOL_GPL(mptcp_register_scheduler);
 
+//注销调度表
 void mptcp_unregister_scheduler(struct mptcp_sched_ops *sched)
 {
 	spin_lock(&mptcp_sched_list_lock);
@@ -504,12 +524,12 @@ void mptcp_unregister_scheduler(struct mptcp_sched_ops *sched)
 	spin_unlock(&mptcp_sched_list_lock);
 
 	/* Wait for outstanding readers to complete before the
-	 * module gets removed entirely.
-	 *
-	 * A try_module_get() should fail by now as our module is
-	 * in "going" state since no refs are held anymore and
-	 * module_exit() handler being called.
-	 */
+	* module gets removed entirely.
+	*
+	* A try_module_get() should fail by now as our module is
+	* in "going" state since no refs are held anymore and
+	* module_exit() handler being called.
+	*/
 	synchronize_rcu();
 }
 EXPORT_SYMBOL_GPL(mptcp_unregister_scheduler);
@@ -546,7 +566,8 @@ int mptcp_set_default_scheduler(const char *name)
 	if (sched) {
 		list_move(&sched->list, &mptcp_sched_list);
 		ret = 0;
-	} else {
+	}
+	else {
 		pr_info("%s is not available\n", name);
 	}
 	spin_unlock(&mptcp_sched_list_lock);
@@ -606,9 +627,11 @@ int mptcp_set_scheduler(struct sock *sk, const char *name)
 
 	if (!sched) {
 		err = -ENOENT;
-	} else if (!ns_capable(sock_net(sk)->user_ns, CAP_NET_ADMIN)) {
+	}
+	else if (!ns_capable(sock_net(sk)->user_ns, CAP_NET_ADMIN)) {
 		err = -EPERM;
-	} else {
+	}
+	else {
 		strcpy(tcp_sk(sk)->mptcp_sched_name, name);
 		tcp_sk(sk)->mptcp_sched_setsockopt = 1;
 	}
@@ -627,7 +650,7 @@ void mptcp_cleanup_scheduler(struct mptcp_cb *mpcb)
 static int __init mptcp_scheduler_default(void)
 {
 	BUILD_BUG_ON(sizeof(struct defsched_priv) > MPTCP_SCHED_SIZE);
-
+	//条件为真时出错
 	return mptcp_set_default_scheduler(CONFIG_DEFAULT_MPTCP_SCHED);
 }
 late_initcall(mptcp_scheduler_default);
