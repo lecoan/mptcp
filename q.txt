@@ -5,3 +5,4 @@
 4. 在func --> __func的意义
 5. 如何下载特定版本的linux源码
 6. sys_bind()能找到引用，但找不到定义
+7. 在ip_rt_init()函数中找不到rt_hash_table

@@ -1315,11 +1315,13 @@ static struct pernet_operations fib_net_ops = {
 
 void __init ip_fib_init(void)
 {
-	rtnl_register(PF_INET, RTM_NEWROUTE, inet_rtm_newroute, NULL, NULL);
-	rtnl_register(PF_INET, RTM_DELROUTE, inet_rtm_delroute, NULL, NULL);
-	rtnl_register(PF_INET, RTM_GETROUTE, NULL, inet_dump_fib, NULL);
+	//注册用于管理路由的netlink，向rtnl_msg_handlers登记对应的函数
+	rtnl_register(PF_INET, RTM_NEWROUTE, inet_rtm_newroute, NULL, NULL);//创建
+	rtnl_register(PF_INET, RTM_DELROUTE, inet_rtm_delroute, NULL, NULL);//删除
+	rtnl_register(PF_INET, RTM_GETROUTE, NULL, inet_dump_fib, NULL);//获取
 
-	register_pernet_subsys(&fib_net_ops);
+	register_pernet_subsys(&fib_net_ops);	//将fib_net_ops加入first_device队列，同时执行
+																					//fib_net_ops->init
 	register_netdevice_notifier(&fib_netdev_notifier);
 	register_inetaddr_notifier(&fib_inetaddr_notifier);
 
