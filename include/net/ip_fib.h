@@ -155,7 +155,7 @@ struct fib_result_nl {
 	unsigned char	nh_sel;
 	unsigned char	type;
 	unsigned char	scope;
-	int             err;      
+	int             err;
 };
 
 #ifdef CONFIG_IP_ROUTE_MULTIPATH
@@ -186,17 +186,21 @@ __be32 fib_info_update_nh_saddr(struct net *net, struct fib_nh *nh);
 
 struct fib_table {
 	struct hlist_node	tb_hlist;
-	u32			tb_id;
-	int			tb_num_default;
+	u32			tb_id; //id etc. RT_TABLE_LOCAL ..
+	int			tb_num_default; //路由信息结构转发队列号
 	struct rcu_head		rcu;
-	unsigned long 		*tb_data;
+	unsigned long 		*tb_data; //跟着trie结构
 	unsigned long		__data[0];
 };
 
+//具体的路由函数表查找过程
 int fib_table_lookup(struct fib_table *tb, const struct flowi4 *flp,
 		     struct fib_result *res, int fib_flags);
+//插入
 int fib_table_insert(struct fib_table *, struct fib_config *);
+//删除
 int fib_table_delete(struct fib_table *, struct fib_config *);
+//转发
 int fib_table_dump(struct fib_table *table, struct sk_buff *skb,
 		   struct netlink_callback *cb);
 int fib_table_flush(struct fib_table *table);

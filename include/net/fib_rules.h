@@ -9,26 +9,28 @@
 #include <net/rtnetlink.h>
 
 struct fib_rule {
-	struct list_head	list;
+	struct list_head	list; //用于加入转发规则队列中
 	int			iifindex;
 	int			oifindex;
 	u32			mark;
 	u32			mark_mask;
 	u32			flags;
-	u32			table;
+	u32			table; //转发函数表ID
 	u8			action;
 	/* 3 bytes hole, try to use */
 	u32			target;
 	__be64			tun_id;
 	struct fib_rule __rcu	*ctarget;
-	struct net		*fr_net;
+	struct net		*fr_net; //网络空间结构指针
 
 	atomic_t		refcnt;
 	u32			pref;
 	int			suppress_ifgroup;
 	int			suppress_prefixlen;
+	//用于保存网络设备名称
 	char			iifname[IFNAMSIZ];
 	char			oifname[IFNAMSIZ];
+
 	struct rcu_head		rcu;
 };
 
@@ -41,14 +43,16 @@ struct fib_lookup_arg {
 #define FIB_LOOKUP_IGNORE_LINKSTATE	2
 };
 
+//转发规则操作表
 struct fib_rules_ops {
 	int			family;
-	struct list_head	list;
-	int			rule_size;
-	int			addr_size;
+	struct list_head	list; //用于加入网络空间的队列中
+	int			rule_size; //规则结构长度
+	int			addr_size; //地址长度
 	int			unresolved_rules;
 	int			nr_goto_rules;
 
+	//相对应的函数指针
 	int			(*action)(struct fib_rule *,
 					  struct flowi *, int,
 					  struct fib_lookup_arg *);
@@ -74,7 +78,7 @@ struct fib_rules_ops {
 
 	int			nlgroup;
 	const struct nla_policy	*policy;
-	struct list_head	rules_list;
+	struct list_head	rules_list; //转发规则函数表队列
 	struct module		*owner;
 	struct net		*fro_net;
 	struct rcu_head		rcu;

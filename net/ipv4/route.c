@@ -2861,6 +2861,7 @@ static __net_initdata struct pernet_operations ipv4_inetpeer_ops = {
 struct ip_rt_acct __percpu *ip_rt_acct __read_mostly;
 #endif /* CONFIG_IP_ROUTE_CLASSID */
 
+//路由函数表的初始化操作
 int __init ip_rt_init(void)
 {
 	int rc = 0;
@@ -2887,7 +2888,7 @@ int __init ip_rt_init(void)
 	if (!ip_rt_acct)
 		panic("IP: failed to allocate ip_rt_acct\n");
 #endif
-
+	//创建路由项的高速缓存，对象长度等于路由项的长度
 	ipv4_dst_ops.kmem_cachep =
 		kmem_cache_create("ip_dst_cache", sizeof(struct rtable), 0,
 				  SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
@@ -2903,8 +2904,8 @@ int __init ip_rt_init(void)
 	ipv4_dst_ops.gc_thresh = ~0;
 	ip_rt_max_size = INT_MAX;
 
-	devinet_init();
-	ip_fib_init();
+	devinet_init();	//执行一些登记工作
+	ip_fib_init();	//
 
 	if (ip_rt_proc_init())
 		pr_err("Unable to create route proc files\n");
