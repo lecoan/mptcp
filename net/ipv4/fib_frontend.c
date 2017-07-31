@@ -1325,7 +1325,7 @@ void __init ip_fib_init(void)
 	rtnl_register(PF_INET, RTM_GETROUTE, NULL, inet_dump_fib, NULL);//获取
 
 	register_pernet_subsys(&fib_net_ops);	//将fib_net_ops加入first_device队列，同时执行
-																					//TODO fib_net_ops->init
+																					//fib_net_ops->init
 	register_netdevice_notifier(&fib_netdev_notifier);
 	register_inetaddr_notifier(&fib_inetaddr_notifier);
 
