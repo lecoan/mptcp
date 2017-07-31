@@ -74,7 +74,7 @@ static bool mptcp_reconstruct_mapping(struct sk_buff *skb)   //重新建立映�
 	p32++;
 	if (mpdss->A) {   //若当前DSS option中DATA ACK字段有效
 		p32++;
-		if (mpdss->a)   //若有效则继续左移1位
+		if (mpdss->a)   //若有效则继续+1
 			p32++;
 	}
 
@@ -281,27 +281,32 @@ void mptcp_reinject_data(struct sock *sk, int clone_it)   //将数据插入重�
 		    (tcb->tcp_flags & TCPHDR_FIN && mptcp_is_data_fin(skb_it) && !skb_it->len))
 			continue;
 
-		if (mptcp_is_reinjected(skb_it))
+		if (mptcp_is_reinjected(skb_it))    //当前段已插入
 			continue;
 
-		tcb->mptcp_flags |= MPTCP_REINJECT;
+		tcb->mptcp_flags |= MPTCP_REINJECT;     //flag设置为reinject
 		__mptcp_reinject_data(skb_it, meta_sk, sk, clone_it);
 	}
 
-	skb_it = tcp_write_queue_tail(meta_sk);
+	skb_it = tcp_write_queue_tail(meta_sk);     //Returns %NULL for an empty list or a pointer to the tail element.
 	/* If sk has sent the empty data-fin, we have to reinject it too. */
 	if (skb_it && mptcp_is_data_fin(skb_it) && skb_it->len == 0 &&
-	    TCP_SKB_CB(skb_it)->path_mask & mptcp_pi_to_flag(tp->mptcp->path_index)) {
+	    TCP_SKB_CB(skb_it)->path_mask & mptcp_pi_to_flag(tp->mptcp->path_index)) {   //mptcp_pi_to_flag：return 1 << (pi - 1);
 		__mptcp_reinject_data(skb_it, meta_sk, NULL, 1);
 	}
 
 	tp->pf = 1;
 
 	mptcp_push_pending_frames(meta_sk);
+	//We check packets out and send-head here. 
+/* Push out any pending frames which were held back due to
+ * TCP_CORK or attempt at coalescing tiny packets.
+ * The socket must be locked by the caller.
+ */
 }
 EXPORT_SYMBOL(mptcp_reinject_data);
 
-static void mptcp_combine_dfin(const struct sk_buff *skb,
+static void mptcp_combine_dfin(const struct sk_buff *skb,        //mptcp_combine_data_fin
 			       const struct sock *meta_sk,
 			       struct sock *subsk)
 {
@@ -325,20 +330,20 @@ static void mptcp_combine_dfin(const struct sk_buff *skb,
 		return;
 
 combine:
-	if (tcp_close_state(subsk)) {
-		subsk->sk_shutdown |= SEND_SHUTDOWN;
-		TCP_SKB_CB(skb)->tcp_flags |= TCPHDR_FIN;
+	if (tcp_close_state(subsk)) {   //if the sending side of a connection is shutdown?
+		subsk->sk_shutdown |= SEND_SHUTDOWN;   //标记
+		TCP_SKB_CB(skb)->tcp_flags |= TCPHDR_FIN;  //标记
 	}
 }
 
 static int mptcp_write_dss_mapping(const struct tcp_sock *tp, const struct sk_buff *skb,
-				   __be32 *ptr)
+				   __be32 *ptr)  //发送方的data_seq与sub_seq的映射
 {
 	const struct tcp_skb_cb *tcb = TCP_SKB_CB(skb);
 	__be32 *start = ptr;
 	__u16 data_len;
 
-	*ptr++ = htonl(tcb->seq); /* data_seq */
+	*ptr++ = htonl(tcb->seq); /* data_seq */   //seq+1
 
 	/* If it's a non-data DATA_FIN, we set subseq to 0 (draft v7) */
 	if (mptcp_is_data_fin(skb) && skb->len == 0)
@@ -346,18 +351,22 @@ static int mptcp_write_dss_mapping(const struct tcp_sock *tp, const struct sk_bu
 	else
 		*ptr++ = htonl(tp->write_seq - tp->mptcp->snt_isn); /* subseq */
 
-	if (tcb->mptcp_flags & MPTCPHDR_INF)
+	if (tcb->mptcp_flags & MPTCPHDR_INF)   //MPTCPHDR_INF情况
 		data_len = 0;
 	else
-		data_len = tcb->end_seq - tcb->seq;
+		data_len = tcb->end_seq - tcb->seq;   //data数据长度
 
 	if (tp->mpcb->dss_csum && data_len) {
 		__be16 *p16 = (__be16 *)ptr;
 		__be32 hdseq = mptcp_get_highorder_sndbits(skb, tp->mpcb);
+		/*mptcp_get_highorder_sndbits：  
+		    return htonl(mpcb->snd_high_order[(TCP_SKB_CB(skb)->mptcp_flags &
+			MPTCPHDR_SEQ64_INDEX) ? 1 : 0]);
+		*/
 		__wsum csum;
 
 		*ptr = htonl(((data_len) << 16) |
-			     (TCPOPT_EOL << 8) |
+			     (TCPOPT_EOL << 8) |    //EOL=> END OF OPTIONS
 			     (TCPOPT_EOL));
 		csum = csum_partial(ptr - 2, 12, skb->csum);
 		p16++;
@@ -368,11 +377,11 @@ static int mptcp_write_dss_mapping(const struct tcp_sock *tp, const struct sk_bu
 			       (TCPOPT_NOP));
 	}
 
-	return ptr - start;
+	return ptr - start;   // 返回偏移量，映射数量？？？？？？？？？？？
 }
 
 static int mptcp_write_dss_data_ack(const struct tcp_sock *tp, const struct sk_buff *skb,
-				    __be32 *ptr)
+				    __be32 *ptr)   //发送方data_ack
 {
 	struct mp_dss *mdss = (struct mp_dss *)ptr;
 	__be32 *start = ptr;
@@ -386,11 +395,12 @@ static int mptcp_write_dss_data_ack(const struct tcp_sock *tp, const struct sk_b
 	mdss->M = mptcp_is_data_seq(skb) ? 1 : 0;
 	mdss->a = 0;
 	mdss->A = 1;
-	mdss->len = mptcp_sub_len_dss(mdss, tp->mpcb->dss_csum);
+	mdss->len = mptcp_sub_len_dss(mdss, tp->mpcb->dss_csum);   //返回帧长（字节为单位） 
+	//return 4 + m->A * (4 + m->a * 4) + m->M * (10 + m->m * 4 + csum * 2);
 	ptr++;
 
 	*ptr++ = htonl(mptcp_meta_tp(tp)->rcv_nxt);
-
+       
 	return ptr - start;
 }
 
