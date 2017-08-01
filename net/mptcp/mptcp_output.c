@@ -1,5 +1,5 @@
 /*
- *	MPTCP implementation - Sending side
+ *	MPTCP implementation - Sending side          //发送方
  *
  *	Initial Design & Implementation:
  *	Sébastien Barré <sebastien.barre@uclouvain.be>
@@ -36,19 +36,19 @@
 #include <net/mptcp_v6.h>
 #include <net/sock.h>
 
-static const int mptcp_dss_len = MPTCP_SUB_LEN_DSS_ALIGN +
+static const int mptcp_dss_len = MPTCP_SUB_LEN_DSS_ALIGN + 
 				 MPTCP_SUB_LEN_ACK_ALIGN +
-				 MPTCP_SUB_LEN_SEQ_ALIGN;
-
-static inline int mptcp_sub_len_remove_addr(u16 bitfield)
+				 MPTCP_SUB_LEN_SEQ_ALIGN;  //data_sequence_signal_length=dss字段长+ack字段长+seq字段长
+                                                            //dss用于映射子流序号与数据序号的关系
+static inline int mptcp_sub_len_remove_addr(u16 bitfield)   //删除地址
 {
 	unsigned int c;
 	for (c = 0; bitfield; c++)
-		bitfield &= bitfield - 1;
-	return MPTCP_SUB_LEN_REMOVE_ADDR + c - 1;
+		bitfield &= bitfield - 1;     //按位与，c统计了bitfield中1的个数
+	return MPTCP_SUB_LEN_REMOVE_ADDR + c - 1;  //表示少了一条路径？
 }
 
-int mptcp_sub_len_remove_addr_align(u16 bitfield)
+int mptcp_sub_len_remove_addr_align(u16 bitfield)     
 {
 	return ALIGN(mptcp_sub_len_remove_addr(bitfield), 4);
 }
@@ -57,54 +57,58 @@ EXPORT_SYMBOL(mptcp_sub_len_remove_addr_align);
 /* get the data-seq and end-data-seq and store them again in the
  * tcp_skb_cb
  */
-static bool mptcp_reconstruct_mapping(struct sk_buff *skb)
+static bool mptcp_reconstruct_mapping(struct sk_buff *skb)   //重新建立映射？？？
 {
 	const struct mp_dss *mpdss = (struct mp_dss *)TCP_SKB_CB(skb)->dss;
 	u32 *p32;
 	u16 *p16;
 
-	if (!mptcp_is_data_seq(skb))
+	if (!mptcp_is_data_seq(skb))   //return TCP_SKB_CB(skb)->mptcp_flags & MPTCPHDR_SEQ;  按位与
 		return false;
 
-	if (!mpdss->M)
-		return false;
+	if (!mpdss->M)   //return TCP_SKB_CB(skb)->mptcp_flags & MPTCPHDR_SEQ;  按位与
+		return false;   //当前映射有效字段无效，直接退出
 
-	/* Move the pointer to the data-seq */
-	p32 = (u32 *)mpdss;
+	/* Move the pointer to the data-seq */   //移动指针至data-seq字段
+	p32 = (u32 *)mpdss;     
 	p32++;
-	if (mpdss->A) {
+	if (mpdss->A) {   //若当前DSS option中DATA ACK字段有效
 		p32++;
-		if (mpdss->a)
+		if (mpdss->a)   //若有效则继续+1
 			p32++;
 	}
 
-	TCP_SKB_CB(skb)->seq = ntohl(*p32);
-
+   	TCP_SKB_CB(skb)->seq = ntohl(*p32);   //将一个无符号长整形数从网络字节顺序转换为主机字节顺序。 
+        /*seq的意思为Starting sequence number	*/
 	/* Get the data_len to calculate the end_data_seq */
 	p32++;
 	p32++;
 	p16 = (u16 *)p32;
-	TCP_SKB_CB(skb)->end_seq = ntohs(*p16) + TCP_SKB_CB(skb)->seq;
+	TCP_SKB_CB(skb)->end_seq = ntohs(*p16) + TCP_SKB_CB(skb)->seq;   /* endseq 的意思是SEQ + FIN + SYN + datalen	*/
 
 	return true;
 }
 
 static bool mptcp_is_reinjected(const struct sk_buff *skb)
 {
-	return TCP_SKB_CB(skb)->mptcp_flags & MPTCP_REINJECT;
+	return TCP_SKB_CB(skb)->mptcp_flags & MPTCP_REINJECT;  //MPTCP_REINJECT宏定义为0x10 表示是否重新插入过这个数据段
 }
 
-static void mptcp_find_and_set_pathmask(const struct sock *meta_sk, struct sk_buff *skb)
+static void mptcp_find_and_set_pathmask(const struct sock *meta_sk, struct sk_buff *skb)  //找到并设定pathmask
 {
 	struct sk_buff *skb_it;
 
-	skb_it = tcp_write_queue_head(meta_sk);
-
-	tcp_for_write_queue_from(skb_it, meta_sk) {
+	skb_it = tcp_write_queue_head(meta_sk);  //return skb_peek(&sk->sk_write_queue);
+        /*int skb_peek(struct sk_buff_head *list)
+     返回指向缓冲区链表第一个节点的指针。*/
+	tcp_for_write_queue_from(skb_it, meta_sk) {  //宏定义
+	                                        // 实体为skb_queue_walk_from(&(sk)->sk_write_queue, skb)
+	                   //从缓冲区某个元素开始循环队列里的元素
 		if (skb_it == tcp_send_head(meta_sk))
 			break;
-
-		if (TCP_SKB_CB(skb_it)->seq == TCP_SKB_CB(skb)->seq) {
+//#define TCP_SKB_CB(__skb)	((struct tcp_skb_cb *)&((__skb)->cb[0])) 
+  //cb[]，保存与协议相关的控制信息，每个协议可能独立使用这些信息。
+		if (TCP_SKB_CB(skb_it)->seq == TCP_SKB_CB(skb)->seq) {   /* Starting sequence number	*/
 			TCP_SKB_CB(skb)->path_mask = TCP_SKB_CB(skb_it)->path_mask;
 			break;
 		}
@@ -117,6 +121,8 @@ static void mptcp_find_and_set_pathmask(const struct sock *meta_sk, struct sk_bu
 static void __mptcp_reinject_data(struct sk_buff *orig_skb, struct sock *meta_sk,
 				  struct sock *sk, int clone_it)
 {
+	//重新插入数据段，            //   调用mptcp_find_and_set_pathmask
+	
 	struct sk_buff *skb, *skb1;
 	const struct tcp_sock *meta_tp = tcp_sk(meta_sk);
 	struct mptcp_cb *mpcb = meta_tp->mpcb;
@@ -127,18 +133,19 @@ static void __mptcp_reinject_data(struct sk_buff *orig_skb, struct sock *meta_sk
 		 * will be changed when it's going to be reinjected on another
 		 * subflow.
 		 */
-		skb = pskb_copy_for_clone(orig_skb, GFP_ATOMIC);
+		skb = pskb_copy_for_clone(orig_skb, GFP_ATOMIC);  //复制结构
 	} else {
-		__skb_unlink(orig_skb, &sk->sk_write_queue);
-		sock_set_flag(sk, SOCK_QUEUE_SHRUNK);
-		sk->sk_wmem_queued -= orig_skb->truesize;
-		sk_mem_uncharge(sk, orig_skb->truesize);
+		__skb_unlink(orig_skb, &sk->sk_write_queue);   //从发送方队列sk->sk_write_queue中删除orig_skb
+		sock_set_flag(sk, SOCK_QUEUE_SHRUNK);  //向sk设置SOCK_QUEUE_SHRUNK标志, /* write queue has been shrunk recently */
+		sk->sk_wmem_queued -= orig_skb->truesize;   //队列收缩
+		sk_mem_uncharge(sk, orig_skb->truesize);   //sk_mem_uncharge=>sk_has_account
+		                                           /* return true if protocol supports memory accounting */
 		skb = orig_skb;
 	}
-	if (unlikely(!skb))
+	if (unlikely(!skb))    //预先加载当前if之后的语句
 		return;
 
-	if (sk && !mptcp_reconstruct_mapping(skb)) {
+	if (sk && !mptcp_reconstruct_mapping(skb)) {  //非重新映射
 		__kfree_skb(skb);
 		return;
 	}
@@ -146,7 +153,7 @@ static void __mptcp_reinject_data(struct sk_buff *orig_skb, struct sock *meta_sk
 	skb->sk = meta_sk;
 
 	/* Reset subflow-specific TCP control-data */
-	TCP_SKB_CB(skb)->sacked = 0;
+	TCP_SKB_CB(skb)->sacked = 0;     //重新初始化控制数据
 	TCP_SKB_CB(skb)->tcp_flags &= (TCPHDR_ACK | TCPHDR_PSH);
 
 	/* If it reached already the destination, we don't have to reinject it */
@@ -166,7 +173,7 @@ static void __mptcp_reinject_data(struct sk_buff *orig_skb, struct sock *meta_sk
 		/* Ok, now we have to look for the full mapping in the meta
 		 * send-queue :S
 		 */
-		tcp_for_write_queue(skb, meta_sk) {
+		tcp_for_write_queue(skb, meta_sk) {//宏定义 skb_queue_walk(&(sk)->sk_write_queue, skb)遍历队列
 			/* Not yet at the mapping? */
 			if (before(TCP_SKB_CB(skb)->seq, seq))
 				continue;
@@ -201,16 +208,16 @@ static void __mptcp_reinject_data(struct sk_buff *orig_skb, struct sock *meta_sk
 	 * This is inspired by code from tcp_data_queue.
 	 */
 
-	skb1 = skb_peek_tail(&mpcb->reinject_queue);
+	skb1 = skb_peek_tail(&mpcb->reinject_queue);  //Returns %NULL for an empty list or a pointer to the tail element.
 	seq = TCP_SKB_CB(skb)->seq;
-	while (1) {
+	while (1) {   //skb1为缓冲区的头部
 		if (!after(TCP_SKB_CB(skb1)->seq, seq))
 			break;
-		if (skb_queue_is_first(&mpcb->reinject_queue, skb1)) {
+		if (skb_queue_is_first(&mpcb->reinject_queue, skb1)) {   //Returns true if skb1 is the first buffer on the list.
 			skb1 = NULL;
 			break;
 		}
-		skb1 = skb_queue_prev(&mpcb->reinject_queue, skb1);
+		skb1 = skb_queue_prev(&mpcb->reinject_queue, skb1);   //Return the prev packet in &mpcb->reinject_queue before skb1.
 	}
 
 	/* Do skb overlap to previous one? */
@@ -218,37 +225,37 @@ static void __mptcp_reinject_data(struct sk_buff *orig_skb, struct sock *meta_sk
 	if (skb1 && before(seq, TCP_SKB_CB(skb1)->end_seq)) {
 		if (!after(end_seq, TCP_SKB_CB(skb1)->end_seq)) {
 			/* All the bits are present. Don't reinject */
-			__kfree_skb(skb);
+			__kfree_skb(skb);   //释放该缓冲区
 			return;
 		}
-		if (seq == TCP_SKB_CB(skb1)->seq) {
+		if (seq == TCP_SKB_CB(skb1)->seq) {  //找到skb1之前的缓冲区
 			if (skb_queue_is_first(&mpcb->reinject_queue, skb1))
 				skb1 = NULL;
 			else
 				skb1 = skb_queue_prev(&mpcb->reinject_queue, skb1);
 		}
 	}
-	if (!skb1)
-		__skb_queue_head(&mpcb->reinject_queue, skb);
+	if (!skb1)   //若skb1为头部缓冲区
+		__skb_queue_head(&mpcb->reinject_queue, skb);   //将skb放在mpcb->reinject_queue队列头部
 	else
-		__skb_queue_after(&mpcb->reinject_queue, skb1, skb);
+		__skb_queue_after(&mpcb->reinject_queue, skb1, skb);    //将skb放在skb1之后
 
 	/* And clean segments covered by new one as whole. */
-	while (!skb_queue_is_last(&mpcb->reinject_queue, skb)) {
-		skb1 = skb_queue_next(&mpcb->reinject_queue, skb);
+	while (!skb_queue_is_last(&mpcb->reinject_queue, skb)) {  //若非最后一个缓冲区
+		skb1 = skb_queue_next(&mpcb->reinject_queue, skb);   //skb1为下一个缓冲区
 
-		if (!after(end_seq, TCP_SKB_CB(skb1)->seq))
+		if (!after(end_seq, TCP_SKB_CB(skb1)->seq))  //若skb1的序号已经到了或者超过了end_seq直接退出
 			break;
 
-		__skb_unlink(skb1, &mpcb->reinject_queue);
-		__kfree_skb(skb1);
+		__skb_unlink(skb1, &mpcb->reinject_queue);  //将skb1从队列中移除
+		__kfree_skb(skb1);   //释放skb1缓存
 	}
 	return;
 }
 
 /* Inserts data into the reinject queue */
-void mptcp_reinject_data(struct sock *sk, int clone_it)
-{
+void mptcp_reinject_data(struct sock *sk, int clone_it)   //将数据插入重新插入队列中
+{                                                           //调用__mptcp_reinject_data
 	struct sk_buff *skb_it, *tmp;
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct sock *meta_sk = tp->meta_sk;
@@ -256,7 +263,12 @@ void mptcp_reinject_data(struct sock *sk, int clone_it)
 	/* It has already been closed - there is really no point in reinjecting */
 	if (meta_sk->sk_state == TCP_CLOSE)
 		return;
-
+     /*
+	skb_queue_walk_safe 宏定义
+	for (skb = (queue)->next, tmp = skb->next;			\
+		     skb != (struct sk_buff *)(queue);				\
+		     skb = tmp, tmp = skb->next)
+	*/
 	skb_queue_walk_safe(&sk->sk_write_queue, skb_it, tmp) {
 		struct tcp_skb_cb *tcb = TCP_SKB_CB(skb_it);
 		/* Subflow syn's and fin's are not reinjected.
@@ -269,27 +281,32 @@ void mptcp_reinject_data(struct sock *sk, int clone_it)
 		    (tcb->tcp_flags & TCPHDR_FIN && mptcp_is_data_fin(skb_it) && !skb_it->len))
 			continue;
 
-		if (mptcp_is_reinjected(skb_it))
+		if (mptcp_is_reinjected(skb_it))    //当前段已插入
 			continue;
 
-		tcb->mptcp_flags |= MPTCP_REINJECT;
+		tcb->mptcp_flags |= MPTCP_REINJECT;     //flag设置为reinject
 		__mptcp_reinject_data(skb_it, meta_sk, sk, clone_it);
 	}
 
-	skb_it = tcp_write_queue_tail(meta_sk);
+	skb_it = tcp_write_queue_tail(meta_sk);     //Returns %NULL for an empty list or a pointer to the tail element.
 	/* If sk has sent the empty data-fin, we have to reinject it too. */
 	if (skb_it && mptcp_is_data_fin(skb_it) && skb_it->len == 0 &&
-	    TCP_SKB_CB(skb_it)->path_mask & mptcp_pi_to_flag(tp->mptcp->path_index)) {
+	    TCP_SKB_CB(skb_it)->path_mask & mptcp_pi_to_flag(tp->mptcp->path_index)) {   //mptcp_pi_to_flag：return 1 << (pi - 1);
 		__mptcp_reinject_data(skb_it, meta_sk, NULL, 1);
 	}
 
 	tp->pf = 1;
 
 	mptcp_push_pending_frames(meta_sk);
+	//We check packets out and send-head here. 
+/* Push out any pending frames which were held back due to
+ * TCP_CORK or attempt at coalescing tiny packets.
+ * The socket must be locked by the caller.
+ */
 }
 EXPORT_SYMBOL(mptcp_reinject_data);
 
-static void mptcp_combine_dfin(const struct sk_buff *skb,
+static void mptcp_combine_dfin(const struct sk_buff *skb,        //mptcp_combine_data_fin
 			       const struct sock *meta_sk,
 			       struct sock *subsk)
 {
@@ -313,20 +330,20 @@ static void mptcp_combine_dfin(const struct sk_buff *skb,
 		return;
 
 combine:
-	if (tcp_close_state(subsk)) {
-		subsk->sk_shutdown |= SEND_SHUTDOWN;
-		TCP_SKB_CB(skb)->tcp_flags |= TCPHDR_FIN;
+	if (tcp_close_state(subsk)) {   //if the sending side of a connection is shutdown?
+		subsk->sk_shutdown |= SEND_SHUTDOWN;   //标记
+		TCP_SKB_CB(skb)->tcp_flags |= TCPHDR_FIN;  //标记
 	}
 }
 
 static int mptcp_write_dss_mapping(const struct tcp_sock *tp, const struct sk_buff *skb,
-				   __be32 *ptr)
+				   __be32 *ptr)  //发送方的data_seq与sub_seq的映射
 {
 	const struct tcp_skb_cb *tcb = TCP_SKB_CB(skb);
 	__be32 *start = ptr;
 	__u16 data_len;
 
-	*ptr++ = htonl(tcb->seq); /* data_seq */
+	*ptr++ = htonl(tcb->seq); /* data_seq */   //seq+1
 
 	/* If it's a non-data DATA_FIN, we set subseq to 0 (draft v7) */
 	if (mptcp_is_data_fin(skb) && skb->len == 0)
@@ -334,18 +351,22 @@ static int mptcp_write_dss_mapping(const struct tcp_sock *tp, const struct sk_bu
 	else
 		*ptr++ = htonl(tp->write_seq - tp->mptcp->snt_isn); /* subseq */
 
-	if (tcb->mptcp_flags & MPTCPHDR_INF)
+	if (tcb->mptcp_flags & MPTCPHDR_INF)   //MPTCPHDR_INF情况
 		data_len = 0;
 	else
-		data_len = tcb->end_seq - tcb->seq;
+		data_len = tcb->end_seq - tcb->seq;   //data数据长度
 
 	if (tp->mpcb->dss_csum && data_len) {
 		__be16 *p16 = (__be16 *)ptr;
 		__be32 hdseq = mptcp_get_highorder_sndbits(skb, tp->mpcb);
+		/*mptcp_get_highorder_sndbits：  
+		    return htonl(mpcb->snd_high_order[(TCP_SKB_CB(skb)->mptcp_flags &
+			MPTCPHDR_SEQ64_INDEX) ? 1 : 0]);
+		*/
 		__wsum csum;
 
 		*ptr = htonl(((data_len) << 16) |
-			     (TCPOPT_EOL << 8) |
+			     (TCPOPT_EOL << 8) |    //EOL=> END OF OPTIONS
 			     (TCPOPT_EOL));
 		csum = csum_partial(ptr - 2, 12, skb->csum);
 		p16++;
@@ -356,11 +377,11 @@ static int mptcp_write_dss_mapping(const struct tcp_sock *tp, const struct sk_bu
 			       (TCPOPT_NOP));
 	}
 
-	return ptr - start;
+	return ptr - start;   // 返回偏移量，映射数量？？？？？？？？？？？
 }
 
 static int mptcp_write_dss_data_ack(const struct tcp_sock *tp, const struct sk_buff *skb,
-				    __be32 *ptr)
+				    __be32 *ptr)   //发送方data_ack
 {
 	struct mp_dss *mdss = (struct mp_dss *)ptr;
 	__be32 *start = ptr;
@@ -374,11 +395,12 @@ static int mptcp_write_dss_data_ack(const struct tcp_sock *tp, const struct sk_b
 	mdss->M = mptcp_is_data_seq(skb) ? 1 : 0;
 	mdss->a = 0;
 	mdss->A = 1;
-	mdss->len = mptcp_sub_len_dss(mdss, tp->mpcb->dss_csum);
+	mdss->len = mptcp_sub_len_dss(mdss, tp->mpcb->dss_csum);   //返回帧长（字节为单位） 
+	//return 4 + m->A * (4 + m->a * 4) + m->M * (10 + m->m * 4 + csum * 2);
 	ptr++;
 
 	*ptr++ = htonl(mptcp_meta_tp(tp)->rcv_nxt);
-
+       
 	return ptr - start;
 }
 

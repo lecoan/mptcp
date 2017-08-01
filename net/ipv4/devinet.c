@@ -2384,19 +2384,22 @@ static struct rtnl_af_ops inet_af_ops __read_mostly = {
 void __init devinet_init(void)
 {
 	int i;
-
+	//TODO 作用是？
 	for (i = 0; i < IN4_ADDR_HSIZE; i++)
 		INIT_HLIST_HEAD(&inet_addr_lst[i]);
 
+	/*devinet_ops提供初始化和释放网络空间的钩子函数*/
 	register_pernet_subsys(&devinet_ops);
 
-	register_gifconf(PF_INET, inet_gifconf);
-	register_netdevice_notifier(&ip_netdev_notifier);
+	//git -->通用接口配置
+	register_gifconf(PF_INET, inet_gifconf); //注册I/O配置程序
+	register_netdevice_notifier(&ip_netdev_notifier); //注册通知节点
 
 	queue_delayed_work(system_power_efficient_wq, &check_lifetime_work, 0);
 
 	rtnl_af_register(&inet_af_ops);
 
+	//注册路由地址的netlink
 	rtnl_register(PF_INET, RTM_NEWADDR, inet_rtm_newaddr, NULL, NULL);
 	rtnl_register(PF_INET, RTM_DELADDR, inet_rtm_deladdr, NULL, NULL);
 	rtnl_register(PF_INET, RTM_GETADDR, NULL, inet_dump_ifaddr, NULL);

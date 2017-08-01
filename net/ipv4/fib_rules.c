@@ -345,14 +345,16 @@ int __net_init fib4_rules_init(struct net *net)
 {
 	int err;
 	struct fib_rules_ops *ops;
-
+	//链接到网络空间结构的专用队列中
 	ops = fib_rules_register(&fib4_rules_ops_template, net);
 	if (IS_ERR(ops))
 		return PTR_ERR(ops);
 
+	//创建3个路由规则并链接到专用队列
 	err = fib_default_rules_init(ops);
 	if (err < 0)
 		goto fail;
+	//将ops和net相关联
 	net->ipv4.rules_ops = ops;
 	net->ipv4.fib_has_custom_rules = false;
 	return 0;

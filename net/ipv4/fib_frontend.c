@@ -52,6 +52,7 @@
 
 static int __net_init fib4_rules_init(struct net *net)
 {
+	//定义并创建对应的路由函数表
 	struct fib_table *local_table, *main_table;
 
 	main_table  = fib_trie_table(RT_TABLE_MAIN, NULL);
@@ -62,6 +63,7 @@ static int __net_init fib4_rules_init(struct net *net)
 	if (!local_table)
 		goto fail;
 
+	//将两个路由函数表加入队列数组里
 	hlist_add_head_rcu(&local_table->tb_hlist,
 				&net->ipv4.fib_table_hash[TABLE_LOCAL_INDEX]);
 	hlist_add_head_rcu(&main_table->tb_hlist,
@@ -1231,11 +1233,12 @@ static int __net_init ip_fib_net_init(struct net *net)
 
 	/* Avoid false sharing : Use at least a full cache line */
 	size = max_t(size_t, size, L1_CACHE_BYTES);
-
+	//为路由函数表队列分配空间
 	net->ipv4.fib_table_hash = kzalloc(size, GFP_KERNEL);
 	if (!net->ipv4.fib_table_hash)
 		return -ENOMEM;
 
+	//初始化本地路由函数表和主路由函数表并链入路由函数表队列中
 	err = fib4_rules_init(net);
 	if (err < 0)
 		goto fail;
@@ -1282,6 +1285,7 @@ static int __net_init fib_net_init(struct net *net)
 #ifdef CONFIG_IP_ROUTE_CLASSID
 	net->ipv4.fib_num_tclassid_users = 0;
 #endif
+	//初始化inet_net网络空间的fib_table_hash的路由函数表队列
 	error = ip_fib_net_init(net);
 	if (error < 0)
 		goto out;
@@ -1315,11 +1319,13 @@ static struct pernet_operations fib_net_ops = {
 
 void __init ip_fib_init(void)
 {
-	rtnl_register(PF_INET, RTM_NEWROUTE, inet_rtm_newroute, NULL, NULL);
-	rtnl_register(PF_INET, RTM_DELROUTE, inet_rtm_delroute, NULL, NULL);
-	rtnl_register(PF_INET, RTM_GETROUTE, NULL, inet_dump_fib, NULL);
+	//注册用于管理路由的netlink，向rtnl_msg_handlers登记对应的函数
+	rtnl_register(PF_INET, RTM_NEWROUTE, inet_rtm_newroute, NULL, NULL);//创建
+	rtnl_register(PF_INET, RTM_DELROUTE, inet_rtm_delroute, NULL, NULL);//删除
+	rtnl_register(PF_INET, RTM_GETROUTE, NULL, inet_dump_fib, NULL);//获取
 
-	register_pernet_subsys(&fib_net_ops);
+	register_pernet_subsys(&fib_net_ops);	//将fib_net_ops加入first_device队列，同时执行
+																					//fib_net_ops->init
 	register_netdevice_notifier(&fib_netdev_notifier);
 	register_inetaddr_notifier(&fib_inetaddr_notifier);
 

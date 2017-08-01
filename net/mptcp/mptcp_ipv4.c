@@ -26,7 +26,8 @@
  *      as published by the Free Software Foundation; either version
  *      2 of the License, or (at your option) any later version.
  */
-
+/*基于ipv4协议的MPTCP实现，包括路径信息加解密，建立连接请求的取消，初始化建立连接请求
+*建立子路径的初始化，结束握手，释放连接*/
 #include <linux/export.h>
 #include <linux/ip.h>
 #include <linux/list.h>
@@ -53,7 +54,7 @@ u32 mptcp_v4_get_nonce(__be32 saddr, __be32 daddr, __be16 sport, __be16 dport)
 	md5_transform(hash, mptcp_secret);
 
 	return hash[0];
-}
+}//对MPTCP的路径信息加密
 
 u64 mptcp_v4_get_key(__be32 saddr, __be32 daddr, __be16 sport, __be16 dport,
 		     u32 seed)
@@ -68,7 +69,7 @@ u64 mptcp_v4_get_key(__be32 saddr, __be32 daddr, __be16 sport, __be16 dport,
 	md5_transform(hash, mptcp_secret);
 
 	return *((u64 *)hash);
-}
+}//对MPTCP的路径信息解密
 
 
 static void mptcp_v4_reqsk_destructor(struct request_sock *req)
@@ -76,7 +77,7 @@ static void mptcp_v4_reqsk_destructor(struct request_sock *req)
 	mptcp_reqsk_destructor(req);
 
 	tcp_v4_reqsk_destructor(req);
-}
+}//IPv4请求析构函数，首先要调用MPTCP请求的析构函数，再调用TCP中ipv4的析构函数
 
 static int mptcp_v4_init_req(struct request_sock *req, const struct sock *sk,
 			     struct sk_buff *skb, bool want_cookie)
@@ -94,7 +95,7 @@ static int mptcp_v4_init_req(struct request_sock *req, const struct sock *sk,
 		mptcp_reqsk_init(req, sk, skb, false);
 
 	return 0;
-}
+}//初始化ipv4的请求sock
 
 #ifdef CONFIG_SYN_COOKIES
 static u32 mptcp_v4_cookie_init_seq(struct request_sock *req, const struct sock *sk,
@@ -107,7 +108,7 @@ static u32 mptcp_v4_cookie_init_seq(struct request_sock *req, const struct sock 
 	mptcp_reqsk_init(req, sk, skb, true);
 
 	return isn;
-}
+}//对cookies选项通过宏定义添加或删除
 #endif
 
 static int mptcp_v4_join_init_req(struct request_sock *req, const struct sock *sk,
@@ -126,7 +127,7 @@ static int mptcp_v4_join_init_req(struct request_sock *req, const struct sock *s
 	 */
 	mtreq->hash_entry.pprev = NULL;
 
-	tcp_request_sock_ipv4_ops.init_req(req, sk, skb, want_cookie);
+	tcp_request_sock_ipv4_ops.init_req(req, sk, skb, want_cookie);//先使用TCP的ipv4初始化函数来初始化新增的子路径的sock
 
 	mtreq->mptcp_loc_nonce = mptcp_v4_get_nonce(ip_hdr(skb)->saddr,
 						    ip_hdr(skb)->daddr,
@@ -139,10 +140,10 @@ static int mptcp_v4_join_init_req(struct request_sock *req, const struct sock *s
 	mtreq->loc_id = loc_id;
 	mtreq->low_prio = low_prio;
 
-	mptcp_join_reqsk_init(mpcb, req, skb);
+	mptcp_join_reqsk_init(mpcb, req, skb);//之后再执行具体的增加子路径的方法
 
 	return 0;
-}
+}//MPTCP添加使用ipv4的子路径
 
 /* Similar to tcp_request_sock_ops */
 struct request_sock_ops mptcp_request_sock_ops __read_mostly = {
@@ -161,7 +162,7 @@ static int mptcp_v4_join_request(struct sock *meta_sk, struct sk_buff *skb)
 	return tcp_conn_request(&mptcp_request_sock_ops,
 				&mptcp_join_request_sock_ipv4_ops,
 				meta_sk, skb);
-}
+}//通过调用TCP的连接请求建立MPTCP的子路径
 
 int mptcp_finish_handshake(struct sock *child, struct sk_buff *skb)
 {
@@ -273,7 +274,7 @@ discard:
 reset_and_discard:
 	tcp_v4_send_reset(rsk, skb);
 	goto discard;
-}
+}//处理建立子路径的请求
 
 /* Create a new IPv4 subflow.
  *
@@ -372,7 +373,7 @@ error:
 		local_bh_enable();
 	}
 	return ret;
-}
+}//初始化添加的子路径
 EXPORT_SYMBOL(mptcp_init4_subsockets);
 
 const struct inet_connection_sock_af_ops mptcp_v4_specific = {
@@ -434,10 +435,10 @@ err_reqsk_create:
 	kfree(ops->slab_name);
 	ops->slab_name = NULL;
 	goto out;
-}
+}//初始化连接，并且添加MPTCP支持选项
 
 void mptcp_pm_v4_undo(void)
 {
 	kmem_cache_destroy(mptcp_request_sock_ops.slab);
 	kfree(mptcp_request_sock_ops.slab_name);
-}
+}//释放连接
