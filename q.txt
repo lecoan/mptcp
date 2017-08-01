@@ -1,7 +1,8 @@
-1. 没有sock_attach_fd()函数 --将file的private_data指向服务器
+1. 没有sock_attach_fd()函数 --将file的private_data指向服务器socket 
 	checked --> 在sock_alloc_file()中
 2. 如何快速检索某个函数的定义位置 etc. mptcp_init()
 3. inetsw[]为什么要设计为双向链表
+(Opinion: the index of inetsw is 'struct inet_protosw . type', which means there may be more than one "protocol" under the same type)
 4. 在func --> __func的意义
 5. 如何下载特定版本的linux源码
 6. sys_bind()能找到引用，但找不到定义

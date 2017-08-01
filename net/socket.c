@@ -352,6 +352,8 @@ static struct file_system_type sock_fs_type = {
  *	but we take care of internal coherence yet.
  */
 
+
+// sys_socketcall() -> sys_socket() -> sock_map_file() ->
 struct file *sock_alloc_file(struct socket *sock, int flags, const char *dname)
 {
 	struct qstr name = { .name = "" };
@@ -2436,6 +2438,8 @@ SYSCALL_DEFINE2(socketcall, int, call, unsigned long __user *, args)
  *	socket interface. The value ops->family corresponds to the
  *	socket system call protocol family.
  */
+
+//inet_init() ->
 int sock_register(const struct net_proto_family *ops)
 {
 	int err;
