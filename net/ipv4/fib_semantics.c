@@ -89,6 +89,8 @@ u32 fib_multipath_secret __read_mostly;
 #define endfor_nexthops(fi) }
 
 
+//Used in the function :  fib_table_lookup in fib_trie.c
+// err == 0 <-> support this routing type.
 const struct fib_prop fib_props[RTN_MAX + 1] = {
 	[RTN_UNSPEC] = {
 		.error	= 0,

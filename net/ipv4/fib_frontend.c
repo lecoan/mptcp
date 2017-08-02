@@ -1317,6 +1317,7 @@ static struct pernet_operations fib_net_ops = {
 	.exit = fib_net_exit,
 };
 
+// ip_rt_init() -> 
 void __init ip_fib_init(void)
 {
 	//注册用于管理路由的netlink，向rtnl_msg_handlers登记对应的函数
@@ -1326,6 +1327,7 @@ void __init ip_fib_init(void)
 
 	register_pernet_subsys(&fib_net_ops);	//将fib_net_ops加入first_device队列，同时执行
 																					//fib_net_ops->init
+	//insert these two nodes to the assigned chains(netdevice_chain and inetaddr_chain)
 	register_netdevice_notifier(&fib_netdev_notifier);
 	register_inetaddr_notifier(&fib_inetaddr_notifier);
 

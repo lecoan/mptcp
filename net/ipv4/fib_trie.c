@@ -1085,16 +1085,17 @@ int fib_table_insert(struct fib_table *tb, struct fib_config *cfg)
 	struct key_vector *l, *tp;
 	unsigned int nlflags = 0;
 	struct fib_info *fi;
-	u8 plen = cfg->fc_dst_len;
+	u8 plen = cfg->fc_dst_len;         //the length of subnet mask
 	u8 slen = KEYLENGTH - plen;
-	u8 tos = cfg->fc_tos;
+	u8 tos = cfg->fc_tos;              //u8: 8 bit unsigned int 
 	u32 key;
 	int err;
 
 	if (plen > KEYLENGTH)
 		return -EINVAL;
 
-	key = ntohl(cfg->fc_dst);
+	//cfg_fc_dst & FZ_MASK(fz)
+	key = ntohl(cfg->fc_dst);	   //Didn't judge whether cfg->fc_dst == NULL
 
 	pr_debug("Insert table=%u %08x/%d\n", tb->tb_id, key, plen);
 
